@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: darwin3-test-pod
+spec:
+  containers:
+    - name: test-container
+      image: busybox
+      command: ["sh", "-c", "echo Hello, Kubernetes! && sleep 3600"]
+      resources:
+        requests:
+          zj.com/darwin3: "1"
+        limits:
+          zj.com/darwin3: "1"
