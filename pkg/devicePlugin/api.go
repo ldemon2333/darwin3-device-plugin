@@ -20,23 +20,29 @@ func (d *Darwin3DevicePlugin) GetPreferredAllocation(ctx context.Context, req *p
 }
 
 func (d *Darwin3DevicePlugin) ListAndWatch(_ *pluginapi.Empty, stream pluginapi.DevicePlugin_ListAndWatchServer) error {
-	// This method is used to stream the list of devices to the kubelet
-	// In a real implementation, you would send updates when devices change
 	devs := d.dm.Devices()
 	klog.Infof("find devices [%s]", String(devs))
 
-	err := stream.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
-	if err != nil {
+	if err := stream.Send(&pluginapi.ListAndWatchResponse{Devices: devs}); err != nil {
 		return errors.WithMessage(err, "failed to send ListAndWatch response")
 	}
 
 	klog.Infof("ListAndWatch response sent successfully, waiting for device updates...")
-	for range d.dm.notify {
-		devs = d.dm.Devices()
-		klog.Infof("Device update detected, sending updated devices: [%s]", String(devs))
-		_ = stream.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
+	for {
+		select {
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		case _, ok := <-d.dm.notify:
+			if !ok {
+				return nil // channel closed
+			}
+			devs = d.dm.Devices()
+			klog.Infof("Device update detected, sending updated devices: [%s]", String(devs))
+			if err := stream.Send(&pluginapi.ListAndWatchResponse{Devices: devs}); err != nil {
+				return errors.WithMessage(err, "failed to send device update")
+			}
+		}
 	}
-	return nil
 }
 
 func (d *Darwin3DevicePlugin) Allocate(_ context.Context, reqs *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
